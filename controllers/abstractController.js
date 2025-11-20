@@ -32,14 +32,50 @@ exports.submitAbstract = async (req, res) => {
       abstractContent,
     } = req.body;
 
+    // Parse additionalAuthors if it's a string
+    let additionalAuthorsArray = additionalAuthors || [];
+    if (typeof additionalAuthors === "string") {
+      try {
+        additionalAuthorsArray = JSON.parse(additionalAuthors);
+      } catch (e) {
+        additionalAuthorsArray = [];
+      }
+    }
+
+    // Parse keywords if it's a string
+    let keywordsArray = keywords;
+    if (typeof keywords === "string") {
+      try {
+        keywordsArray = JSON.parse(keywords);
+      } catch (e) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid keywords format",
+        });
+      }
+    }
+
+    // Parse abstractContent if it's a string
+    let abstractContentObj = abstractContent;
+    if (typeof abstractContent === "string") {
+      try {
+        abstractContentObj = JSON.parse(abstractContent);
+      } catch (e) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid abstract content format",
+        });
+      }
+    }
+
     // Validate required fields
     if (
       !title ||
       !primaryAuthor ||
       !department ||
       !category ||
-      !keywords ||
-      !abstractContent
+      !keywordsArray ||
+      !abstractContentObj
     ) {
       return res.status(400).json({
         success: false,
@@ -62,10 +98,10 @@ exports.submitAbstract = async (req, res) => {
 
     // Validate abstract sections
     if (
-      !abstractContent.background ||
-      !abstractContent.methods ||
-      !abstractContent.results ||
-      !abstractContent.conclusion
+      !abstractContentObj.background ||
+      !abstractContentObj.methods ||
+      !abstractContentObj.results ||
+      !abstractContentObj.conclusion
     ) {
       return res.status(400).json({
         success: false,
@@ -75,7 +111,7 @@ exports.submitAbstract = async (req, res) => {
     }
 
     // Validate keywords
-    if (!Array.isArray(keywords) || keywords.length === 0) {
+    if (!Array.isArray(keywordsArray) || keywordsArray.length === 0) {
       return res.status(400).json({
         success: false,
         message: "Please provide at least one keyword",
@@ -99,17 +135,17 @@ exports.submitAbstract = async (req, res) => {
         degree: primaryAuthor.degree,
         email: primaryAuthor.email.toLowerCase(),
       },
-      additionalAuthors: additionalAuthors || [],
+      additionalAuthors: additionalAuthorsArray || [],
       email: primaryAuthor.email.toLowerCase(),
       department,
       departmentOther: department === "other" ? departmentOther : undefined,
       category,
-      keywords,
+      keywords: keywordsArray,
       abstractContent: {
-        background: abstractContent.background,
-        methods: abstractContent.methods,
-        results: abstractContent.results,
-        conclusion: abstractContent.conclusion,
+        background: abstractContentObj.background,
+        methods: abstractContentObj.methods,
+        results: abstractContentObj.results,
+        conclusion: abstractContentObj.conclusion,
       },
       pdfFile: {
         filename: req.file.filename,
