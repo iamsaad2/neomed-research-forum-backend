@@ -169,7 +169,8 @@ exports.submitAbstract = async (req, res) => {
       try {
         const msg = {
           to: newAbstract.email,
-          from: process.env.SENDGRID_FROM_EMAIL || "saadbadat.1@gmail.com",
+          from: process.env.SENDGRID_FROM_EMAIL || "sbadat@neomed.edu",
+          replyTo: "sbadat@neomed.edu",
           subject: "NEOMED Research Forum - Submission Confirmed",
           html: `
             <!DOCTYPE html>
