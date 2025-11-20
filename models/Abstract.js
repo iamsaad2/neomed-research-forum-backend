@@ -65,7 +65,6 @@ const abstractSchema = new mongoose.Schema(
     viewToken: {
       type: String,
       unique: true,
-      required: true,
     },
 
     // Status and Review Information
