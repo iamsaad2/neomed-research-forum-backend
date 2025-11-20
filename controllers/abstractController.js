@@ -21,37 +21,103 @@ const getMagicLinkUrl = (token) => {
 // @access  Public
 exports.submitAbstract = async (req, res) => {
   try {
-    const { title, authors, email, department, category, keywords, abstract } =
-      req.body;
+    const {
+      title,
+      primaryAuthor,
+      additionalAuthors,
+      department,
+      departmentOther,
+      category,
+      keywords,
+      abstractContent,
+    } = req.body;
 
     // Validate required fields
-    if (!title || !authors || !email || !department || !category || !abstract) {
+    if (
+      !title ||
+      !primaryAuthor ||
+      !department ||
+      !category ||
+      !keywords ||
+      !abstractContent
+    ) {
       return res.status(400).json({
         success: false,
         message: "Please provide all required fields",
       });
     }
 
+    // Validate primary author
+    if (
+      !primaryAuthor.firstName ||
+      !primaryAuthor.lastName ||
+      !primaryAuthor.degree ||
+      !primaryAuthor.email
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide complete primary author information",
+      });
+    }
+
+    // Validate abstract sections
+    if (
+      !abstractContent.background ||
+      !abstractContent.methods ||
+      !abstractContent.results ||
+      !abstractContent.conclusion
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Please provide all abstract sections (Background, Methods, Results, Conclusion)",
+      });
+    }
+
+    // Validate keywords
+    if (!Array.isArray(keywords) || keywords.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide at least one keyword",
+      });
+    }
+
+    // Validate PDF upload
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "PDF upload is required",
+      });
+    }
+
     // Prepare abstract data
     const abstractData = {
       title,
-      authors,
-      email,
+      primaryAuthor: {
+        firstName: primaryAuthor.firstName,
+        lastName: primaryAuthor.lastName,
+        degree: primaryAuthor.degree,
+        email: primaryAuthor.email.toLowerCase(),
+      },
+      additionalAuthors: additionalAuthors || [],
+      email: primaryAuthor.email.toLowerCase(),
       department,
+      departmentOther: department === "other" ? departmentOther : undefined,
       category,
       keywords,
-      abstract,
-      status: "pending",
-    };
-
-    // Add PDF file info if uploaded
-    if (req.file) {
-      abstractData.pdfFile = {
+      abstractContent: {
+        background: abstractContent.background,
+        methods: abstractContent.methods,
+        results: abstractContent.results,
+        conclusion: abstractContent.conclusion,
+      },
+      pdfFile: {
         filename: req.file.filename,
         path: req.file.path,
         uploadedAt: new Date(),
-      };
-    }
+      },
+      status: "pending",
+    };
 
     // Create new abstract (viewToken generated automatically)
     const newAbstract = await Abstract.create(abstractData);
@@ -59,12 +125,15 @@ exports.submitAbstract = async (req, res) => {
     // Generate magic link
     const magicLink = getMagicLinkUrl(newAbstract.viewToken);
 
+    // Get formatted authors list for email
+    const formattedAuthors = newAbstract.getFormattedAuthors();
+
     // Send confirmation email with magic link using SendGrid API
     if (process.env.SENDGRID_API_KEY) {
       try {
         const msg = {
-          to: email,
-          from: process.env.SENDGRID_FROM_EMAIL || "saadbadat.1@gmail.com", // Must be verified in SendGrid
+          to: newAbstract.email,
+          from: process.env.SENDGRID_FROM_EMAIL || "saadbadat.1@gmail.com",
           subject: "NEOMED Research Forum - Submission Confirmed",
           html: `
             <!DOCTYPE html>
@@ -92,7 +161,9 @@ exports.submitAbstract = async (req, res) => {
                 <div class="content">
                   <h2>Thank you for your submission!</h2>
                   
-                  <p>Dear ${authors.split(",")[0].trim()},</p>
+                  <p>Dear ${primaryAuthor.firstName} ${
+            primaryAuthor.lastName
+          },</p>
                   
                   <p>Your abstract titled "<strong>${title}</strong>" has been successfully submitted to the NEOMED Research Forum 2025.</p>
                   
@@ -103,10 +174,10 @@ exports.submitAbstract = async (req, res) => {
                       .slice(-6)
                       .toUpperCase()}<br>
                     <strong>Title:</strong> ${title}<br>
-                    <strong>Authors:</strong> ${authors}<br>
+                    <strong>Authors:</strong> ${formattedAuthors}<br>
                     <strong>Category:</strong> ${category}<br>
                     <strong>Status:</strong> <span class="status-badge">PENDING REVIEW</span><br>
-                    ${req.file ? "<strong>PDF:</strong> Uploaded ✓<br>" : ""}
+                    <strong>PDF:</strong> Uploaded ✓<br>
                     <strong>Submitted:</strong> ${new Date().toLocaleDateString(
                       "en-US",
                       { month: "long", day: "numeric", year: "numeric" }
@@ -149,7 +220,10 @@ exports.submitAbstract = async (req, res) => {
         };
 
         await sgMail.send(msg);
-        console.log("✅ Confirmation email sent via SendGrid to:", email);
+        console.log(
+          "✅ Confirmation email sent via SendGrid to:",
+          newAbstract.email
+        );
       } catch (emailError) {
         console.log("⚠️ Email not sent:", emailError.message);
         if (emailError.response) {
@@ -224,10 +298,31 @@ exports.getAllAbstracts = async (req, res) => {
       .sort({ createdAt: -1 })
       .select("-viewToken"); // Don't expose magic links to admins
 
+    // Format for reviewer/admin view
+    const formattedAbstracts = abstracts.map((abs) => ({
+      id: abs._id,
+      title: abs.title,
+      authors: abs.getFormattedAuthors(),
+      primaryAuthor: abs.primaryAuthor,
+      additionalAuthors: abs.additionalAuthors,
+      email: abs.email,
+      department: abs.department,
+      departmentOther: abs.departmentOther,
+      category: abs.category,
+      keywords: abs.keywords,
+      abstract: abs.getFullAbstract(),
+      abstractContent: abs.abstractContent,
+      hasPDF: true,
+      pdfUrl: abs.pdfFile ? `/${abs.pdfFile.path}` : null,
+      status: abs.status,
+      submittedAt: abs.createdAt,
+      reviewCount: abs.reviews.length,
+    }));
+
     res.status(200).json({
       success: true,
-      count: abstracts.length,
-      data: abstracts,
+      count: formattedAbstracts.length,
+      data: formattedAbstracts,
     });
   } catch (error) {
     console.error("Error fetching abstracts:", error);
@@ -255,7 +350,26 @@ exports.getAbstractById = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      data: abstract,
+      data: {
+        id: abstract._id,
+        title: abstract.title,
+        authors: abstract.getFormattedAuthors(),
+        primaryAuthor: abstract.primaryAuthor,
+        additionalAuthors: abstract.additionalAuthors,
+        email: abstract.email,
+        department: abstract.department,
+        departmentOther: abstract.departmentOther,
+        category: abstract.category,
+        keywords: abstract.keywords,
+        abstract: abstract.getFullAbstract(),
+        abstractContent: abstract.abstractContent,
+        hasPDF: true,
+        pdfUrl: abstract.pdfFile ? `/${abstract.pdfFile.path}` : null,
+        status: abstract.status,
+        reviews: abstract.reviews,
+        averageScore: abstract.averageScore,
+        submittedAt: abstract.createdAt,
+      },
     });
   } catch (error) {
     console.error("Error fetching abstract:", error);
@@ -278,13 +392,27 @@ exports.getPublishedAbstracts = async (req, res) => {
     })
       .sort({ averageScore: -1 })
       .select(
-        "title authors department category keywords abstract averageScore publishedAt createdAt"
+        "title primaryAuthor additionalAuthors department category keywords abstractContent averageScore publishedAt createdAt"
       );
+
+    const formattedAbstracts = abstracts.map((abs) => ({
+      id: abs._id,
+      title: abs.title,
+      authors: abs.getFormattedAuthors(),
+      department: abs.department,
+      category: abs.category,
+      keywords: abs.keywords,
+      abstract: abs.getFullAbstract(),
+      abstractContent: abs.abstractContent,
+      averageScore: abs.averageScore,
+      publishedAt: abs.publishedAt,
+      createdAt: abs.createdAt,
+    }));
 
     res.status(200).json({
       success: true,
-      count: abstracts.length,
-      data: abstracts,
+      count: formattedAbstracts.length,
+      data: formattedAbstracts,
     });
   } catch (error) {
     console.error("Error fetching published abstracts:", error);

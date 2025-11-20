@@ -9,17 +9,60 @@ const abstractSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
-    authors: {
-      type: String,
-      required: true,
-      trim: true,
+
+    // Primary submitter/author
+    primaryAuthor: {
+      firstName: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+      lastName: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+      degree: {
+        type: String,
+        required: true,
+        enum: ["MD", "DO", "PhD", "MD/PhD", "MS", "BS", "BA", "Other"],
+      },
+      email: {
+        type: String,
+        required: true,
+        trim: true,
+        lowercase: true,
+      },
     },
+
+    // Additional authors array
+    additionalAuthors: [
+      {
+        firstName: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        lastName: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        degree: {
+          type: String,
+          required: true,
+          enum: ["MD", "DO", "PhD", "MD/PhD", "MS", "BS", "Other"],
+        },
+      },
+    ],
+
     email: {
       type: String,
       required: true,
       trim: true,
       lowercase: true,
     },
+
     department: {
       type: String,
       required: true,
@@ -36,29 +79,66 @@ const abstractSchema = new mongoose.Schema(
         "emergency",
         "anesthesiology",
         "dermatology",
+        "other",
       ],
     },
+
+    departmentOther: {
+      type: String,
+      trim: true,
+    },
+
     category: {
       type: String,
       required: true,
       enum: ["clinical", "education", "basic", "public"],
     },
+
     keywords: {
-      type: String,
-      trim: true,
-    },
-
-    // Abstract Content
-    abstract: {
-      type: String,
+      type: [String],
       required: true,
+      validate: {
+        validator: function (v) {
+          return v && v.length > 0;
+        },
+        message: "At least one keyword is required",
+      },
     },
 
-    // Optional PDF Upload
+    // Abstract Content - Split into sections
+    abstractContent: {
+      background: {
+        type: String,
+        required: true,
+      },
+      methods: {
+        type: String,
+        required: true,
+      },
+      results: {
+        type: String,
+        required: true,
+      },
+      conclusion: {
+        type: String,
+        required: true,
+      },
+    },
+
+    // Required PDF Upload
     pdfFile: {
-      filename: String,
-      path: String,
-      uploadedAt: Date,
+      filename: {
+        type: String,
+        required: true,
+      },
+      path: {
+        type: String,
+        required: true,
+      },
+      uploadedAt: {
+        type: Date,
+        required: true,
+      },
     },
 
     // Magic Link Token for viewing submission
@@ -136,18 +216,42 @@ abstractSchema.methods.calculateAverageScore = function () {
   return this.averageScore;
 };
 
+// Helper method to get formatted authors list
+abstractSchema.methods.getFormattedAuthors = function () {
+  const authors = [
+    `${this.primaryAuthor.firstName} ${this.primaryAuthor.lastName}, ${this.primaryAuthor.degree}`,
+  ];
+
+  if (this.additionalAuthors && this.additionalAuthors.length > 0) {
+    this.additionalAuthors.forEach((author) => {
+      authors.push(`${author.firstName} ${author.lastName}, ${author.degree}`);
+    });
+  }
+
+  return authors.join("; ");
+};
+
+// Helper method to get full abstract text
+abstractSchema.methods.getFullAbstract = function () {
+  return `Background: ${this.abstractContent.background}\n\nMethods: ${this.abstractContent.methods}\n\nResults: ${this.abstractContent.results}\n\nConclusion: ${this.abstractContent.conclusion}`;
+};
+
 // Get public view of abstract (what submitter sees)
 abstractSchema.methods.getPublicView = function () {
   return {
     id: this._id,
     title: this.title,
-    authors: this.authors,
+    primaryAuthor: this.primaryAuthor,
+    additionalAuthors: this.additionalAuthors,
+    allAuthors: this.getFormattedAuthors(),
     email: this.email,
     department: this.department,
+    departmentOther: this.departmentOther,
     category: this.category,
     keywords: this.keywords,
-    abstract: this.abstract,
-    hasPDF: !!this.pdfFile,
+    abstractContent: this.abstractContent,
+    fullAbstract: this.getFullAbstract(),
+    hasPDF: true,
     status: this.status,
     statusMessage: this.statusMessage,
     submittedAt: this.createdAt,
