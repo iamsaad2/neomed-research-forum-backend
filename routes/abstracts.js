@@ -6,19 +6,8 @@ const {
   getAllAbstracts,
   getAbstractById,
   getPublishedAbstracts,
+  getAbstractByToken,
 } = require("../controllers/abstractController");
-
-// Error handling middleware for multer
-const handleMulterError = (err, req, res, next) => {
-  if (err) {
-    console.error("Multer error:", err);
-    return res.status(400).json({
-      success: false,
-      message: err.message,
-    });
-  }
-  next();
-};
 
 // Public routes
 router.post(
@@ -31,14 +20,14 @@ router.post(
           message: "File upload error: " + err.message,
         });
       }
-      // Log for debugging
-      console.log("After multer - req.body:", req.body);
-      console.log("After multer - req.file:", req.file);
       next();
     });
   },
   submitAbstract
 );
+
+// NEW: Magic link route - view abstract by token
+router.get("/view/:token", getAbstractByToken);
 
 router.get("/published", getPublishedAbstracts);
 
