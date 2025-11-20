@@ -1,21 +1,13 @@
 const Abstract = require("../models/Abstract");
-const nodemailer = require("nodemailer");
+const sgMail = require("@sendgrid/mail");
 
-// Configure email transporter
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: parseInt(process.env.EMAIL_PORT) || 587,
-  secure: process.env.EMAIL_PORT == "465", // true for 465, false for 587
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASSWORD,
-  },
-  tls: {
-    rejectUnauthorized: false, // For Railway compatibility
-  },
-  connectionTimeout: 10000, // 10 seconds
-  greetingTimeout: 10000,
-});
+// Set SendGrid API key
+if (process.env.SENDGRID_API_KEY) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+  console.log("✅ SendGrid API key configured");
+} else {
+  console.log("⚠️ SENDGRID_API_KEY not set - emails will not be sent");
+}
 
 // Generate magic link URL
 const getMagicLinkUrl = (token) => {
@@ -67,97 +59,106 @@ exports.submitAbstract = async (req, res) => {
     // Generate magic link
     const magicLink = getMagicLinkUrl(newAbstract.viewToken);
 
-    // Send confirmation email with magic link
-    try {
-      await transporter.sendMail({
-        from: process.env.EMAIL_USER,
-        to: email,
-        subject: "NEOMED Research Forum - Submission Confirmed",
-        html: `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <style>
-              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-              .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-              .header { background: linear-gradient(135deg, #004963 0%, #0072BC 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
-              .content { background: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
-              .button { display: inline-block; background: #0072BC; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; margin: 20px 0; font-weight: bold; }
-              .button:hover { background: #004963; }
-              .info-box { background: white; border-left: 4px solid #0072BC; padding: 15px; margin: 20px 0; }
-              .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
-              .status-badge { background: #fef3c7; color: #92400e; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold; }
-            </style>
-          </head>
-          <body>
-            <div class="container">
-              <div class="header">
-                <h1>✓ Submission Received!</h1>
-                <p>NEOMED Research Forum 2025</p>
-              </div>
-              
-              <div class="content">
-                <h2>Thank you for your submission!</h2>
-                
-                <p>Dear ${authors.split(",")[0].trim()},</p>
-                
-                <p>Your abstract titled "<strong>${title}</strong>" has been successfully submitted to the NEOMED Research Forum 2025.</p>
-                
-                <div class="info-box">
-                  <strong>Submission Details:</strong><br>
-                  <strong>Submission ID:</strong> #${newAbstract._id
-                    .toString()
-                    .slice(-6)
-                    .toUpperCase()}<br>
-                  <strong>Title:</strong> ${title}<br>
-                  <strong>Authors:</strong> ${authors}<br>
-                  <strong>Category:</strong> ${category}<br>
-                  <strong>Status:</strong> <span class="status-badge">PENDING REVIEW</span><br>
-                  ${req.file ? "<strong>PDF:</strong> Uploaded ✓<br>" : ""}
-                  <strong>Submitted:</strong> ${new Date().toLocaleDateString(
-                    "en-US",
-                    { month: "long", day: "numeric", year: "numeric" }
-                  )}
+    // Send confirmation email with magic link using SendGrid API
+    if (process.env.SENDGRID_API_KEY) {
+      try {
+        const msg = {
+          to: email,
+          from: process.env.SENDGRID_FROM_EMAIL || "saadbadat.1@gmail.com", // Must be verified in SendGrid
+          subject: "NEOMED Research Forum - Submission Confirmed",
+          html: `
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <style>
+                body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                .header { background: linear-gradient(135deg, #004963 0%, #0072BC 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+                .content { background: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
+                .button { display: inline-block; background: #0072BC; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; margin: 20px 0; font-weight: bold; }
+                .button:hover { background: #004963; }
+                .info-box { background: white; border-left: 4px solid #0072BC; padding: 15px; margin: 20px 0; }
+                .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+                .status-badge { background: #fef3c7; color: #92400e; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold; }
+              </style>
+            </head>
+            <body>
+              <div class="container">
+                <div class="header">
+                  <h1>✓ Submission Received!</h1>
+                  <p>NEOMED Research Forum 2025</p>
                 </div>
                 
-                <h3>📋 View Your Submission Anytime</h3>
-                <p>Click the button below to view your abstract and check its status:</p>
-                
-                <div style="text-align: center;">
-                  <a href="${magicLink}" class="button">View My Submission</a>
+                <div class="content">
+                  <h2>Thank you for your submission!</h2>
+                  
+                  <p>Dear ${authors.split(",")[0].trim()},</p>
+                  
+                  <p>Your abstract titled "<strong>${title}</strong>" has been successfully submitted to the NEOMED Research Forum 2025.</p>
+                  
+                  <div class="info-box">
+                    <strong>Submission Details:</strong><br>
+                    <strong>Submission ID:</strong> #${newAbstract._id
+                      .toString()
+                      .slice(-6)
+                      .toUpperCase()}<br>
+                    <strong>Title:</strong> ${title}<br>
+                    <strong>Authors:</strong> ${authors}<br>
+                    <strong>Category:</strong> ${category}<br>
+                    <strong>Status:</strong> <span class="status-badge">PENDING REVIEW</span><br>
+                    ${req.file ? "<strong>PDF:</strong> Uploaded ✓<br>" : ""}
+                    <strong>Submitted:</strong> ${new Date().toLocaleDateString(
+                      "en-US",
+                      { month: "long", day: "numeric", year: "numeric" }
+                    )}
+                  </div>
+                  
+                  <h3>📋 View Your Submission Anytime</h3>
+                  <p>Click the button below to view your abstract and check its status:</p>
+                  
+                  <div style="text-align: center;">
+                    <a href="${magicLink}" class="button">View My Submission</a>
+                  </div>
+                  
+                  <p style="font-size: 12px; color: #666;">Or copy this link: <a href="${magicLink}">${magicLink}</a></p>
+                  
+                  <div class="info-box">
+                    <strong>⏱ What's Next?</strong><br>
+                    • <strong>Review Period:</strong> January 7 - January 28, 2025<br>
+                    • <strong>Notification:</strong> January 28, 2025<br>
+                    • <strong>Final Slides Due:</strong> February 18, 2025<br>
+                    • <strong>Forum Date:</strong> February 25, 2025
+                  </div>
+                  
+                  <p><strong>Important:</strong> Save this email! The link above is your unique access link to view your submission status. No login required.</p>
+                  
+                  <p>If you have any questions, please contact us at <a href="mailto:sbadat@neomed.edu">sbadat@neomed.edu</a></p>
+                  
+                  <p>Best regards,<br>
+                  <strong>NEOMED Research Forum Committee</strong></p>
                 </div>
                 
-                <p style="font-size: 12px; color: #666;">Or copy this link: <a href="${magicLink}">${magicLink}</a></p>
-                
-                <div class="info-box">
-                  <strong>⏱ What's Next?</strong><br>
-                  • <strong>Review Period:</strong> January 7 - January 28, 2025<br>
-                  • <strong>Notification:</strong> January 28, 2025<br>
-                  • <strong>Final Slides Due:</strong> February 18, 2025<br>
-                  • <strong>Forum Date:</strong> February 25, 2025
+                <div class="footer">
+                  <p>Northeast Ohio Medical University<br>
+                  Research Forum 2025</p>
                 </div>
-                
-                <p><strong>Important:</strong> Save this email! The link above is your unique access link to view your submission status. No login required.</p>
-                
-                <p>If you have any questions, please contact us at <a href="mailto:sbadat@neomed.edu">sbadat@neomed.edu</a></p>
-                
-                <p>Best regards,<br>
-                <strong>NEOMED Research Forum Committee</strong></p>
               </div>
-              
-              <div class="footer">
-                <p>Northeast Ohio Medical University<br>
-                Research Forum 2025</p>
-              </div>
-            </div>
-          </body>
-          </html>
-        `,
-      });
-      console.log("✅ Confirmation email sent to:", email);
-    } catch (emailError) {
-      console.log("⚠️ Email not sent:", emailError.message);
-      // Don't fail the submission if email fails
+            </body>
+            </html>
+          `,
+        };
+
+        await sgMail.send(msg);
+        console.log("✅ Confirmation email sent via SendGrid to:", email);
+      } catch (emailError) {
+        console.log("⚠️ Email not sent:", emailError.message);
+        if (emailError.response) {
+          console.log("SendGrid error details:", emailError.response.body);
+        }
+        // Don't fail the submission if email fails
+      }
+    } else {
+      console.log("⚠️ SendGrid API key not configured - skipping email");
     }
 
     res.status(201).json({
@@ -168,7 +169,7 @@ exports.submitAbstract = async (req, res) => {
         id: newAbstract._id,
         title: newAbstract.title,
         status: newAbstract.status,
-        viewToken: newAbstract.viewToken, // Send back so frontend can redirect immediately
+        viewToken: newAbstract.viewToken,
         magicLink: magicLink,
         submittedAt: newAbstract.createdAt,
       },
