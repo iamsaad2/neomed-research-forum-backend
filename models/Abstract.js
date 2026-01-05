@@ -51,7 +51,7 @@ const abstractSchema = new mongoose.Schema(
         degree: {
           type: String,
           required: true,
-          enum: ["MD", "DO", "PhD", "MD/PhD", "MS", "BS", "Other"],
+          enum: ["MD", "DO", "PhD", "MD/PhD", "MS", "BS", "BA", "Other"],
         },
       },
     ],
