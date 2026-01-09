@@ -145,25 +145,30 @@ exports.getAllAbstracts = async (req, res) => {
 
     const abstracts = await query;
 
-    // Format response
+    // Format response with new review structure
     const formattedAbstracts = abstracts.map((abstract) => ({
       id: abstract._id,
       title: abstract.title,
-      authors: abstract.authors,
+      authors: abstract.getFormattedAuthors(),
+      primaryAuthor: abstract.primaryAuthor,
+      additionalAuthors: abstract.additionalAuthors,
       email: abstract.email,
       department: abstract.department,
+      departmentOther: abstract.departmentOther,
       category: abstract.category,
       keywords: abstract.keywords,
-      abstract: abstract.abstract,
+      abstract: abstract.getFullAbstract(),
+      abstractContent: abstract.abstractContent,
       hasPDF: !!abstract.pdfFile,
       pdfUrl: abstract.pdfFile ? `/${abstract.pdfFile.path}` : null,
       status: abstract.status,
       reviewCount: abstract.reviews.length,
       averageScore: abstract.averageScore,
       reviews: abstract.reviews.map((r) => ({
-        reviewerName: r.reviewerId.name,
-        reviewerEmail: r.reviewerId.email,
-        score: r.score,
+        reviewerName: r.reviewerId?.name || "Unknown",
+        reviewerEmail: r.reviewerId?.email || "Unknown",
+        scores: r.scores, // Individual criterion scores
+        totalScore: r.totalScore, // Average of 5 criteria
         comments: r.comments,
         submittedAt: r.submittedAt,
       })),
@@ -361,7 +366,7 @@ exports.getDashboardStats = async (req, res) => {
     const rejected = await Abstract.countDocuments({ status: "rejected" });
     const published = await Abstract.countDocuments({ published: true });
 
-    // Get average score of all abstracts
+    // Get average score of all abstracts (now on 1-5 scale)
     const abstracts = await Abstract.find({ "reviews.0": { $exists: true } });
     const avgScore =
       abstracts.length > 0
@@ -379,6 +384,7 @@ exports.getDashboardStats = async (req, res) => {
         rejected,
         published,
         averageScore: avgScore.toFixed(2),
+        scoreScale: "1-5", // Indicate the new scale
       },
     });
   } catch (error) {

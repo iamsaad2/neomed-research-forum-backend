@@ -161,22 +161,53 @@ const abstractSchema = new mongoose.Schema(
     },
 
     // Reviews and Scoring (hidden from submitter)
+    // Uses 5-criteria rubric: each criterion scored 1-5
     reviews: [
       {
         reviewerId: {
           type: mongoose.Schema.Types.ObjectId,
           ref: "Reviewer",
         },
-        score: {
+        // Individual criterion scores (1-5 each)
+        scores: {
+          background: {
+            type: Number,
+            min: 1,
+            max: 5,
+          },
+          methods: {
+            type: Number,
+            min: 1,
+            max: 5,
+          },
+          results: {
+            type: Number,
+            min: 1,
+            max: 5,
+          },
+          conclusions: {
+            type: Number,
+            min: 1,
+            max: 5,
+          },
+          originality: {
+            type: Number,
+            min: 1,
+            max: 5,
+          },
+        },
+        // Average of the 5 criterion scores (1-5)
+        totalScore: {
           type: Number,
           min: 1,
-          max: 10,
+          max: 5,
         },
         comments: String,
         submittedAt: Date,
       },
     ],
 
+    // Average of all reviewers' totalScores (1-5 scale)
     averageScore: {
       type: Number,
       default: 0,
@@ -211,7 +242,7 @@ abstractSchema.methods.calculateAverageScore = function () {
     return 0;
   }
 
-  const sum = this.reviews.reduce((acc, review) => acc + review.score, 0);
+  const sum = this.reviews.reduce((acc, review) => acc + review.totalScore, 0);
   this.averageScore = sum / this.reviews.length;
   return this.averageScore;
 };

@@ -6,12 +6,14 @@ const {
   getAbstractsForReview,
   submitReview,
   getMyReviews,
+  getRubric,
 } = require("../controllers/reviewerController");
 
 // Public routes
 router.post("/login", reviewerLogin);
 
 // Protected routes (require authentication)
+router.get("/rubric", protect, isReviewer, getRubric);
 router.get("/abstracts", protect, isReviewer, getAbstractsForReview);
 router.post("/review/:abstractId", protect, isReviewer, submitReview);
 router.get("/my-reviews", protect, isReviewer, getMyReviews);
