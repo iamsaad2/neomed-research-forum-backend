@@ -5,6 +5,8 @@ const {
   adminLogin,
   createFirstAdmin,
   getAllAbstracts,
+  getAllReviewers,
+  deleteReviewer,
   acceptAbstract,
   rejectAbstract,
   publishAbstract,
@@ -18,6 +20,8 @@ router.post("/create-first", createFirstAdmin); // Only works if no admins exist
 
 // Protected routes (require admin authentication)
 router.get("/abstracts", protect, isAdmin, getAllAbstracts);
+router.get("/reviewers", protect, isAdmin, getAllReviewers);
+router.delete("/reviewers/:reviewerId", protect, isAdmin, deleteReviewer);
 router.get("/stats", protect, isAdmin, getDashboardStats);
 router.put("/accept/:abstractId", protect, isAdmin, acceptAbstract);
 router.put("/reject/:abstractId", protect, isAdmin, rejectAbstract);

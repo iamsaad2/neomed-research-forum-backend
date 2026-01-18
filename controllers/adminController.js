@@ -1,5 +1,6 @@
 const Admin = require("../models/Admin");
 const Abstract = require("../models/Abstract");
+const Reviewer = require("../models/Reviewer");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 
@@ -193,6 +194,115 @@ exports.getAllAbstracts = async (req, res) => {
   }
 };
 
+// @desc    Get all reviewers with stats
+// @route   GET /api/admin/reviewers
+// @access  Private (Admin only)
+exports.getAllReviewers = async (req, res) => {
+  try {
+    const reviewers = await Reviewer.find().sort({ totalReviewsCompleted: -1 });
+
+    const formattedReviewers = reviewers.map((reviewer) => ({
+      id: reviewer._id,
+      name: reviewer.name,
+      email: reviewer.email,
+      department: reviewer.department,
+      specialization: reviewer.specialization,
+      totalReviewsCompleted: reviewer.totalReviewsCompleted,
+      assignedAbstracts: reviewer.assignedAbstracts?.length || 0,
+      createdAt: reviewer.createdAt,
+    }));
+
+    res.status(200).json({
+      success: true,
+      count: formattedReviewers.length,
+      data: formattedReviewers,
+    });
+  } catch (error) {
+    console.error("Error fetching reviewers:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching reviewers",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Delete a reviewer and all their reviews
+// @route   DELETE /api/admin/reviewers/:reviewerId
+// @access  Private (Admin only)
+exports.deleteReviewer = async (req, res) => {
+  try {
+    const { reviewerId } = req.params;
+
+    // Find the reviewer
+    const reviewer = await Reviewer.findById(reviewerId);
+    if (!reviewer) {
+      return res.status(404).json({
+        success: false,
+        message: "Reviewer not found",
+      });
+    }
+
+    // Find all abstracts with reviews from this reviewer
+    const abstractsWithReviews = await Abstract.find({
+      "reviews.reviewerId": reviewerId,
+    });
+
+    let totalReviewsRemoved = 0;
+
+    // Remove this reviewer's reviews from all abstracts
+    for (const abstract of abstractsWithReviews) {
+      const originalReviewCount = abstract.reviews.length;
+
+      // Filter out reviews from this reviewer
+      abstract.reviews = abstract.reviews.filter(
+        (review) => review.reviewerId.toString() !== reviewerId
+      );
+
+      const reviewsRemoved = originalReviewCount - abstract.reviews.length;
+      totalReviewsRemoved += reviewsRemoved;
+
+      // Recalculate average score
+      abstract.calculateAverageScore();
+
+      // Update status if no more reviews
+      if (abstract.reviews.length === 0 && abstract.status === "under_review") {
+        abstract.status = "pending";
+      }
+
+      await abstract.save();
+    }
+
+    // Delete the reviewer
+    await Reviewer.findByIdAndDelete(reviewerId);
+
+    console.log(
+      `✅ Deleted reviewer ${reviewer.email} and removed ${totalReviewsRemoved} reviews`
+    );
+
+    res.status(200).json({
+      success: true,
+      message: `Reviewer ${reviewer.name} and their ${totalReviewsRemoved} reviews have been deleted`,
+      data: {
+        deletedReviewer: {
+          id: reviewer._id,
+          name: reviewer.name,
+          email: reviewer.email,
+        },
+        reviewsRemoved: totalReviewsRemoved,
+        abstractsAffected: abstractsWithReviews.length,
+      },
+    });
+  } catch (error) {
+    console.error("Error deleting reviewer:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error deleting reviewer",
+      error: error.message,
+    });
+  }
+};
+
 // @desc    Accept an abstract
 // @route   PUT /api/admin/accept/:abstractId
 // @access  Private (Admin only)
@@ -374,6 +484,9 @@ exports.getDashboardStats = async (req, res) => {
           abstracts.length
         : 0;
 
+    // Get reviewer count
+    const reviewerCount = await Reviewer.countDocuments();
+
     res.status(200).json({
       success: true,
       data: {
@@ -385,6 +498,7 @@ exports.getDashboardStats = async (req, res) => {
         published,
         averageScore: avgScore.toFixed(2),
         scoreScale: "1-5", // Indicate the new scale
+        totalReviewers: reviewerCount,
       },
     });
   } catch (error) {
