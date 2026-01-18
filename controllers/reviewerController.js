@@ -70,10 +70,11 @@ exports.reviewerLogin = async (req, res) => {
     let reviewer = await Reviewer.findOne({ email: email.toLowerCase() });
 
     if (!reviewer) {
-      // Create new reviewer profile
+      // Create new reviewer profile (defaults to "all" assignment type)
       reviewer = await Reviewer.create({
         name,
         email: email.toLowerCase(),
+        assignmentType: "all", // New reviewers see all abstracts by default
       });
       console.log("✅ New reviewer created:", email);
     }
@@ -94,6 +95,8 @@ exports.reviewerLogin = async (req, res) => {
         name: reviewer.name,
         email: reviewer.email,
         totalReviews: reviewer.totalReviewsCompleted,
+        assignmentType: reviewer.assignmentType,
+        assignedCount: reviewer.assignedAbstracts?.length || 0,
       },
     });
   } catch (error) {
@@ -128,18 +131,41 @@ exports.getRubric = async (req, res) => {
   }
 };
 
-// @desc    Get abstracts for review (pending or under_review)
+// @desc    Get abstracts for review (filtered by assignment type)
 // @route   GET /api/reviewers/abstracts
 // @access  Private (Reviewer only)
 exports.getAbstractsForReview = async (req, res) => {
   try {
-    // Get abstracts that are pending or under review
-    const abstracts = await Abstract.find({
-      status: { $in: ["pending", "under_review"] },
-    }).sort({ createdAt: 1 }); // Oldest first
+    const reviewerId = req.user.id;
+
+    // Get the reviewer to check assignment type
+    const reviewer = await Reviewer.findById(reviewerId);
+    if (!reviewer) {
+      return res.status(404).json({
+        success: false,
+        message: "Reviewer not found",
+      });
+    }
+
+    let abstracts;
+
+    if (
+      reviewer.assignmentType === "limited" &&
+      reviewer.assignedAbstracts?.length > 0
+    ) {
+      // Limited reviewer: only show assigned abstracts that are pending or under review
+      abstracts = await Abstract.find({
+        _id: { $in: reviewer.assignedAbstracts },
+        status: { $in: ["pending", "under_review"] },
+      }).sort({ createdAt: 1 });
+    } else {
+      // "All" reviewer: show all pending/under_review abstracts
+      abstracts = await Abstract.find({
+        status: { $in: ["pending", "under_review"] },
+      }).sort({ createdAt: 1 });
+    }
 
     // For each abstract, check if current reviewer has already reviewed it
-    const reviewerId = req.user.id;
     const abstractsWithReviewStatus = abstracts.map((abstract) => {
       const hasReviewed = abstract.reviews.some(
         (review) => review.reviewerId.toString() === reviewerId
@@ -166,6 +192,7 @@ exports.getAbstractsForReview = async (req, res) => {
     res.status(200).json({
       success: true,
       count: abstractsWithReviewStatus.length,
+      assignmentType: reviewer.assignmentType,
       data: abstractsWithReviewStatus,
     });
   } catch (error) {
@@ -239,6 +266,20 @@ exports.submitReview = async (req, res) => {
         success: false,
         message: "Abstract not found",
       });
+    }
+
+    // Check if reviewer has access to this abstract (for limited reviewers)
+    const reviewer = await Reviewer.findById(reviewerId);
+    if (reviewer.assignmentType === "limited") {
+      const isAssigned = reviewer.assignedAbstracts.some(
+        (id) => id.toString() === abstractId
+      );
+      if (!isAssigned) {
+        return res.status(403).json({
+          success: false,
+          message: "You are not assigned to review this abstract",
+        });
+      }
     }
 
     // Check if reviewer already reviewed this abstract

@@ -7,6 +7,9 @@ const {
   getAllAbstracts,
   getAllReviewers,
   deleteReviewer,
+  updateReviewerAssignment,
+  randomizeAssignments,
+  clearReviewerAssignments,
   acceptAbstract,
   rejectAbstract,
   publishAbstract,
@@ -22,6 +25,27 @@ router.post("/create-first", createFirstAdmin); // Only works if no admins exist
 router.get("/abstracts", protect, isAdmin, getAllAbstracts);
 router.get("/reviewers", protect, isAdmin, getAllReviewers);
 router.delete("/reviewers/:reviewerId", protect, isAdmin, deleteReviewer);
+
+// Reviewer assignment management routes
+router.put(
+  "/reviewers/:reviewerId/assignment",
+  protect,
+  isAdmin,
+  updateReviewerAssignment
+);
+router.post(
+  "/reviewers/randomize-assignments",
+  protect,
+  isAdmin,
+  randomizeAssignments
+);
+router.delete(
+  "/reviewers/:reviewerId/assignments",
+  protect,
+  isAdmin,
+  clearReviewerAssignments
+);
+
 router.get("/stats", protect, isAdmin, getDashboardStats);
 router.put("/accept/:abstractId", protect, isAdmin, acceptAbstract);
 router.put("/reject/:abstractId", protect, isAdmin, rejectAbstract);

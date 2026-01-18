@@ -208,7 +208,9 @@ exports.getAllReviewers = async (req, res) => {
       department: reviewer.department,
       specialization: reviewer.specialization,
       totalReviewsCompleted: reviewer.totalReviewsCompleted,
+      assignmentType: reviewer.assignmentType || "all",
       assignedAbstracts: reviewer.assignedAbstracts?.length || 0,
+      assignedLimit: reviewer.assignedLimit || 0,
       createdAt: reviewer.createdAt,
     }));
 
@@ -222,6 +224,203 @@ exports.getAllReviewers = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error fetching reviewers",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Update reviewer assignment type
+// @route   PUT /api/admin/reviewers/:reviewerId/assignment
+// @access  Private (Admin only)
+exports.updateReviewerAssignment = async (req, res) => {
+  try {
+    const { reviewerId } = req.params;
+    const { assignmentType, assignedLimit } = req.body;
+
+    const reviewer = await Reviewer.findById(reviewerId);
+    if (!reviewer) {
+      return res.status(404).json({
+        success: false,
+        message: "Reviewer not found",
+      });
+    }
+
+    // Update assignment type
+    if (assignmentType) {
+      reviewer.assignmentType = assignmentType;
+    }
+
+    // Update limit if provided
+    if (assignedLimit !== undefined) {
+      reviewer.assignedLimit = assignedLimit;
+    }
+
+    // If changing to "all", clear specific assignments
+    if (assignmentType === "all") {
+      reviewer.assignedAbstracts = [];
+      reviewer.assignedLimit = 0;
+    }
+
+    await reviewer.save();
+
+    res.status(200).json({
+      success: true,
+      message: `Reviewer assignment updated to ${reviewer.assignmentType}`,
+      data: {
+        id: reviewer._id,
+        name: reviewer.name,
+        assignmentType: reviewer.assignmentType,
+        assignedAbstracts: reviewer.assignedAbstracts.length,
+        assignedLimit: reviewer.assignedLimit,
+      },
+    });
+  } catch (error) {
+    console.error("Error updating reviewer assignment:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error updating reviewer assignment",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Randomize abstract assignments for limited reviewers (non-overlapping)
+// @route   POST /api/admin/reviewers/randomize-assignments
+// @access  Private (Admin only)
+exports.randomizeAssignments = async (req, res) => {
+  try {
+    const { reviewerIds, abstractsPerReviewer } = req.body;
+
+    if (
+      !reviewerIds ||
+      !Array.isArray(reviewerIds) ||
+      reviewerIds.length === 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide an array of reviewer IDs",
+      });
+    }
+
+    if (!abstractsPerReviewer || abstractsPerReviewer < 1) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide a valid number of abstracts per reviewer",
+      });
+    }
+
+    // Get all pending/under_review abstracts
+    const allAbstracts = await Abstract.find({
+      status: { $in: ["pending", "under_review"] },
+    }).select("_id");
+
+    const abstractIds = allAbstracts.map((a) => a._id.toString());
+    const totalAbstracts = abstractIds.length;
+    const totalNeeded = reviewerIds.length * abstractsPerReviewer;
+
+    if (totalNeeded > totalAbstracts) {
+      return res.status(400).json({
+        success: false,
+        message: `Not enough abstracts for non-overlapping assignment. Have ${totalAbstracts} abstracts, need ${totalNeeded} (${reviewerIds.length} reviewers × ${abstractsPerReviewer} each)`,
+      });
+    }
+
+    // Shuffle abstracts using Fisher-Yates algorithm
+    const shuffled = [...abstractIds];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+
+    // Assign abstracts to each reviewer (non-overlapping)
+    const assignments = [];
+    let currentIndex = 0;
+
+    for (const reviewerId of reviewerIds) {
+      const reviewer = await Reviewer.findById(reviewerId);
+      if (!reviewer) {
+        continue; // Skip invalid reviewer IDs
+      }
+
+      // Get slice of abstracts for this reviewer
+      const assignedAbstractIds = shuffled.slice(
+        currentIndex,
+        currentIndex + abstractsPerReviewer
+      );
+      currentIndex += abstractsPerReviewer;
+
+      // Update reviewer
+      reviewer.assignmentType = "limited";
+      reviewer.assignedAbstracts = assignedAbstractIds;
+      reviewer.assignedLimit = abstractsPerReviewer;
+      await reviewer.save();
+
+      assignments.push({
+        reviewerId: reviewer._id,
+        reviewerName: reviewer.name,
+        reviewerEmail: reviewer.email,
+        assignedCount: assignedAbstractIds.length,
+      });
+    }
+
+    console.log(
+      `✅ Randomized assignments for ${assignments.length} reviewers`
+    );
+
+    res.status(200).json({
+      success: true,
+      message: `Successfully assigned ${abstractsPerReviewer} abstracts each to ${assignments.length} reviewers (non-overlapping)`,
+      data: {
+        totalAbstracts,
+        abstractsPerReviewer,
+        reviewersAssigned: assignments.length,
+        assignments,
+      },
+    });
+  } catch (error) {
+    console.error("Error randomizing assignments:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error randomizing assignments",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Clear all assignments for a reviewer (reset to "all")
+// @route   DELETE /api/admin/reviewers/:reviewerId/assignments
+// @access  Private (Admin only)
+exports.clearReviewerAssignments = async (req, res) => {
+  try {
+    const { reviewerId } = req.params;
+
+    const reviewer = await Reviewer.findById(reviewerId);
+    if (!reviewer) {
+      return res.status(404).json({
+        success: false,
+        message: "Reviewer not found",
+      });
+    }
+
+    reviewer.assignmentType = "all";
+    reviewer.assignedAbstracts = [];
+    reviewer.assignedLimit = 0;
+    await reviewer.save();
+
+    res.status(200).json({
+      success: true,
+      message: `Cleared assignments for ${reviewer.name}. Now has access to all abstracts.`,
+      data: {
+        id: reviewer._id,
+        name: reviewer.name,
+        assignmentType: reviewer.assignmentType,
+      },
+    });
+  } catch (error) {
+    console.error("Error clearing assignments:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error clearing assignments",
       error: error.message,
     });
   }
@@ -487,6 +686,12 @@ exports.getDashboardStats = async (req, res) => {
     // Get reviewer count
     const reviewerCount = await Reviewer.countDocuments();
 
+    // Get limited vs all reviewers count
+    const limitedReviewers = await Reviewer.countDocuments({
+      assignmentType: "limited",
+    });
+    const allAccessReviewers = reviewerCount - limitedReviewers;
+
     res.status(200).json({
       success: true,
       data: {
@@ -499,6 +704,8 @@ exports.getDashboardStats = async (req, res) => {
         averageScore: avgScore.toFixed(2),
         scoreScale: "1-5", // Indicate the new scale
         totalReviewers: reviewerCount,
+        limitedReviewers,
+        allAccessReviewers,
       },
     });
   } catch (error) {
