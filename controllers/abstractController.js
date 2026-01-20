@@ -32,6 +32,19 @@ exports.submitAbstract = async (req, res) => {
       abstractContent,
     } = req.body;
 
+    // Parse primaryAuthor if it's a string (from FormData)
+    let primaryAuthorObj = primaryAuthor;
+    if (typeof primaryAuthor === "string") {
+      try {
+        primaryAuthorObj = JSON.parse(primaryAuthor);
+      } catch (e) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid primary author format",
+        });
+      }
+    }
+
     // Parse additionalAuthors if it's a string
     let additionalAuthorsArray = additionalAuthors || [];
     if (typeof additionalAuthors === "string") {
@@ -42,7 +55,6 @@ exports.submitAbstract = async (req, res) => {
       }
     }
 
-    // Parse keywords if it's a string
     // Parse keywords if it's a string
     let keywordsArray = keywords;
     if (typeof keywords === "string") {
@@ -74,7 +86,7 @@ exports.submitAbstract = async (req, res) => {
     // Validate required fields
     if (
       !title ||
-      !primaryAuthor ||
+      !primaryAuthorObj ||
       !department ||
       !category ||
       !keywordsArray ||
@@ -88,10 +100,10 @@ exports.submitAbstract = async (req, res) => {
 
     // Validate primary author
     if (
-      !primaryAuthor.firstName ||
-      !primaryAuthor.lastName ||
-      !primaryAuthor.degree ||
-      !primaryAuthor.email
+      !primaryAuthorObj.firstName ||
+      !primaryAuthorObj.lastName ||
+      !primaryAuthorObj.degree ||
+      !primaryAuthorObj.email
     ) {
       return res.status(400).json({
         success: false,
@@ -133,13 +145,13 @@ exports.submitAbstract = async (req, res) => {
     const abstractData = {
       title,
       primaryAuthor: {
-        firstName: primaryAuthor.firstName,
-        lastName: primaryAuthor.lastName,
-        degree: primaryAuthor.degree,
-        email: primaryAuthor.email.toLowerCase(),
+        firstName: primaryAuthorObj.firstName,
+        lastName: primaryAuthorObj.lastName,
+        degree: primaryAuthorObj.degree,
+        email: primaryAuthorObj.email.toLowerCase(),
       },
       additionalAuthors: additionalAuthorsArray || [],
-      email: primaryAuthor.email.toLowerCase(),
+      email: primaryAuthorObj.email.toLowerCase(),
       department,
       departmentOther: department === "other" ? departmentOther : undefined,
       category,
@@ -201,8 +213,8 @@ exports.submitAbstract = async (req, res) => {
                 <div class="content">
                   <h2>Thank you for your submission!</h2>
                   
-                  <p>Dear ${primaryAuthor.firstName} ${
-            primaryAuthor.lastName
+                  <p>Dear ${primaryAuthorObj.firstName} ${
+            primaryAuthorObj.lastName
           },</p>
                   
                   <p>Your abstract titled "<strong>${title}</strong>" has been successfully submitted to the NEOMED Research Forum 2025.</p>
