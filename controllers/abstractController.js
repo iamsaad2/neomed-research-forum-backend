@@ -43,15 +43,18 @@ exports.submitAbstract = async (req, res) => {
     }
 
     // Parse keywords if it's a string
+    // Parse keywords if it's a string
     let keywordsArray = keywords;
     if (typeof keywords === "string") {
+      // First try to parse as JSON (in case it's a JSON array string)
       try {
         keywordsArray = JSON.parse(keywords);
       } catch (e) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid keywords format",
-        });
+        // If not valid JSON, treat as comma-separated string
+        keywordsArray = keywords
+          .split(",")
+          .map((k) => k.trim())
+          .filter((k) => k.length > 0);
       }
     }
 
