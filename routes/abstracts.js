@@ -8,7 +8,7 @@ const {
   getPublishedAbstracts,
   getAbstractByToken,
   authorRespond,
-  updateShowcasePreference,
+  markPresentationSubmitted,
 } = require("../controllers/abstractController");
 
 // Public routes
@@ -33,7 +33,9 @@ router.get("/view/:token", getAbstractByToken);
 
 // Author response routes (public but require token)
 router.put("/respond/:token", authorRespond);
-router.put("/showcase/:token", updateShowcasePreference);
+
+// Mark presentation as submitted (self-reporting)
+router.put("/mark-presentation/:token", markPresentationSubmitted);
 
 // Published abstracts (public showcase)
 router.get("/published", getPublishedAbstracts);

@@ -399,7 +399,7 @@ exports.authorRespond = async (req, res) => {
     abstract.authorRespondedAt = new Date();
 
     if (response === "accepted") {
-      // Set showcase preference
+      // Set showcase preference (one-time choice, cannot be changed later)
       abstract.displayOnShowcase = displayOnShowcase === true;
 
       // If display on showcase, publish it
@@ -440,13 +440,12 @@ exports.authorRespond = async (req, res) => {
   }
 };
 
-// @desc    Update showcase preference (can be changed after initial response)
-// @route   PUT /api/abstracts/showcase/:token
+// @desc    Mark presentation as submitted (self-reporting)
+// @route   PUT /api/abstracts/mark-presentation/:token
 // @access  Public (but requires token)
-exports.updateShowcasePreference = async (req, res) => {
+exports.markPresentationSubmitted = async (req, res) => {
   try {
     const { token } = req.params;
-    const { displayOnShowcase } = req.body;
 
     const abstract = await Abstract.findOne({ viewToken: token });
 
@@ -468,26 +467,24 @@ exports.updateShowcasePreference = async (req, res) => {
       });
     }
 
-    abstract.displayOnShowcase = displayOnShowcase === true;
-    abstract.published = displayOnShowcase === true;
-    if (displayOnShowcase && !abstract.publishedAt) {
-      abstract.publishedAt = new Date();
-    }
+    // Mark presentation as submitted
+    abstract.presentationSubmitted = true;
+    abstract.presentationSubmittedAt = new Date();
 
     await abstract.save();
 
+    console.log(`✅ Presentation marked as submitted for: ${abstract.title}`);
+
     res.status(200).json({
       success: true,
-      message: displayOnShowcase
-        ? "Your abstract will be displayed on the public showcase."
-        : "Your abstract will not be displayed on the public showcase.",
+      message: "Presentation marked as submitted.",
       data: abstract.getPublicView(),
     });
   } catch (error) {
-    console.error("Error updating showcase preference:", error);
+    console.error("Error marking presentation as submitted:", error);
     res.status(500).json({
       success: false,
-      message: "Error updating showcase preference",
+      message: "Error marking presentation as submitted",
       error: error.message,
     });
   }

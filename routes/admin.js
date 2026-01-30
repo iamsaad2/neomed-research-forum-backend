@@ -15,7 +15,6 @@ const {
   publishAbstract,
   unpublishAbstract,
   getDashboardStats,
-  resendAcceptanceEmail,
 } = require("../controllers/adminController");
 
 // Public routes
@@ -52,13 +51,5 @@ router.put("/accept/:abstractId", protect, isAdmin, acceptAbstract);
 router.put("/reject/:abstractId", protect, isAdmin, rejectAbstract);
 router.put("/publish/:abstractId", protect, isAdmin, publishAbstract);
 router.put("/unpublish/:abstractId", protect, isAdmin, unpublishAbstract);
-
-// Resend acceptance email
-router.post(
-  "/resend-acceptance/:abstractId",
-  protect,
-  isAdmin,
-  resendAcceptanceEmail
-);
 
 module.exports = router;

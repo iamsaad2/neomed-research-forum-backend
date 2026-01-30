@@ -161,14 +161,12 @@ const abstractSchema = new mongoose.Schema(
     },
 
     // Reviews and Scoring (hidden from submitter)
-    // Uses 5-criteria rubric: each criterion scored 1-5
     reviews: [
       {
         reviewerId: {
           type: mongoose.Schema.Types.ObjectId,
           ref: "Reviewer",
         },
-        // Individual criterion scores (1-5 each)
         scores: {
           background: {
             type: Number,
@@ -196,7 +194,6 @@ const abstractSchema = new mongoose.Schema(
             max: 5,
           },
         },
-        // Average of the 5 criterion scores (1-5)
         totalScore: {
           type: Number,
           min: 1,
@@ -207,7 +204,6 @@ const abstractSchema = new mongoose.Schema(
       },
     ],
 
-    // Average of all reviewers' totalScores (1-5 scale)
     averageScore: {
       type: Number,
       default: 0,
@@ -222,12 +218,7 @@ const abstractSchema = new mongoose.Schema(
     publishedAt: Date,
     rejectedAt: Date,
 
-    // ============================================
-    // NEW FIELDS FOR AUTHOR RESPONSE FLOW
-    // All have defaults so existing abstracts work
-    // ============================================
-
-    // Author's response to acceptance (only relevant when status === 'accepted')
+    // Author's response to acceptance
     authorResponse: {
       type: String,
       enum: ["pending", "accepted", "declined"],
@@ -235,6 +226,7 @@ const abstractSchema = new mongoose.Schema(
     },
 
     // Whether author wants their abstract displayed on public showcase
+    // ONE-TIME choice made when author accepts - cannot be changed later
     displayOnShowcase: {
       type: Boolean,
       default: false,
@@ -252,12 +244,22 @@ const abstractSchema = new mongoose.Schema(
       default: null,
     },
 
-    // Presentation file upload (for PowerPoint - Phase 2)
+    // Presentation submission tracking (self-reported)
+    presentationSubmitted: {
+      type: Boolean,
+      default: false,
+    },
+
+    presentationSubmittedAt: {
+      type: Date,
+      default: null,
+    },
+
+    // Presentation file upload (optional)
     presentationFile: {
       filename: String,
       path: String,
       uploadedAt: Date,
-      // Could add external link for Google Drive/OneDrive later
       externalUrl: String,
     },
 
@@ -279,7 +281,7 @@ const abstractSchema = new mongoose.Schema(
     },
   },
   {
-    timestamps: true, // Adds createdAt and updatedAt automatically
+    timestamps: true,
   }
 );
 
@@ -339,25 +341,20 @@ abstractSchema.methods.getPublicView = function () {
     abstractContent: this.abstractContent,
     fullAbstract: this.getFullAbstract(),
     hasPDF: !!this.pdfFile,
-    pdfUrl: this.pdfFile ? `/${this.pdfFile.path}` : null,
     status: this.status,
     statusMessage: this.statusMessage,
     submittedAt: this.createdAt,
     acceptedAt: this.acceptedAt,
     rejectedAt: this.rejectedAt,
-    // New fields for author response flow
+    // Author response flow fields
     authorResponse: this.authorResponse || "pending",
     displayOnShowcase: this.displayOnShowcase || false,
     authorResponseDeadline: this.authorResponseDeadline,
     authorRespondedAt: this.authorRespondedAt,
     presentationDeadline: this.presentationDeadline,
-    presentationFile: this.presentationFile
-      ? {
-          filename: this.presentationFile.filename,
-          uploadedAt: this.presentationFile.uploadedAt,
-        }
-      : null,
-    // Don't expose: reviews, averageScore, viewToken
+    presentationSubmitted: this.presentationSubmitted || false,
+    presentationSubmittedAt: this.presentationSubmittedAt,
+    // Don't expose: reviews, averageScore, viewToken, pdfUrl
   };
 };
 
@@ -374,7 +371,6 @@ abstractSchema.pre("save", function (next) {
           "Your abstract is currently under review by our committee.";
         break;
       case "accepted":
-        // Don't override if author response is already set
         if (!this.authorResponse || this.authorResponse === "pending") {
           this.statusMessage =
             "Congratulations! Your abstract has been accepted. Please respond by the deadline to confirm your participation.";
