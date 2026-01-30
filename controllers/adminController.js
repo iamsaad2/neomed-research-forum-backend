@@ -3,6 +3,19 @@ const Abstract = require("../models/Abstract");
 const Reviewer = require("../models/Reviewer");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+const sgMail = require("@sendgrid/mail");
+
+// Set SendGrid API key
+if (process.env.SENDGRID_API_KEY) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+}
+
+// Generate magic link URL
+const getMagicLinkUrl = (token) => {
+  const frontendUrl =
+    process.env.FRONTEND_URL?.split(",")[0] || "http://localhost:5173";
+  return `${frontendUrl}/view/${token}`;
+};
 
 // @desc    Admin login
 // @route   POST /api/admin/login
@@ -177,6 +190,13 @@ exports.getAllAbstracts = async (req, res) => {
       submittedAt: abstract.createdAt,
       acceptedAt: abstract.acceptedAt,
       publishedAt: abstract.publishedAt,
+      // New fields for author response tracking
+      authorResponse: abstract.authorResponse || "pending",
+      displayOnShowcase: abstract.displayOnShowcase || false,
+      authorResponseDeadline: abstract.authorResponseDeadline,
+      authorRespondedAt: abstract.authorRespondedAt,
+      acceptanceEmailSent: abstract.acceptanceEmailSent || false,
+      acceptanceEmailSentAt: abstract.acceptanceEmailSentAt,
     }));
 
     res.status(200).json({
@@ -502,7 +522,7 @@ exports.deleteReviewer = async (req, res) => {
   }
 };
 
-// @desc    Accept an abstract
+// @desc    Accept an abstract and send acceptance email to author
 // @route   PUT /api/admin/accept/:abstractId
 // @access  Private (Admin only)
 exports.acceptAbstract = async (req, res) => {
@@ -517,18 +537,143 @@ exports.acceptAbstract = async (req, res) => {
       });
     }
 
+    // Set status to accepted
     abstract.status = "accepted";
     abstract.acceptedAt = new Date();
+
+    // Set author response to pending (waiting for author to respond)
+    abstract.authorResponse = "pending";
+
+    // Set deadline for author to respond (Thursday February 5th, 2026)
+    abstract.authorResponseDeadline = new Date("2026-02-05T23:59:59");
+
+    // Set presentation deadline (February 21st, 2026)
+    abstract.presentationDeadline = new Date("2026-02-21T23:59:59");
+
     await abstract.save();
+
+    // Generate magic link for author
+    const magicLink = getMagicLinkUrl(abstract.viewToken);
+    const formattedAuthors = abstract.getFormattedAuthors();
+
+    // Send acceptance email
+    let emailSent = false;
+    if (process.env.SENDGRID_API_KEY) {
+      try {
+        const msg = {
+          to: abstract.email,
+          from: process.env.SENDGRID_FROM_EMAIL || "sbadat@neomed.edu",
+          replyTo: "sbadat@neomed.edu",
+          subject:
+            "🎉 Congratulations! Your Abstract Has Been Accepted - NEOMED Research Forum 2026",
+          html: `
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <style>
+                body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                .header { background: linear-gradient(135deg, #059669 0%, #10B981 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+                .content { background: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
+                .button { display: inline-block; background: #059669; color: white; padding: 14px 35px; text-decoration: none; border-radius: 6px; margin: 20px 0; font-weight: bold; font-size: 16px; }
+                .button:hover { background: #047857; }
+                .info-box { background: white; border-left: 4px solid #059669; padding: 15px; margin: 20px 0; }
+                .warning-box { background: #FEF3C7; border-left: 4px solid #F59E0B; padding: 15px; margin: 20px 0; }
+                .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+                .status-badge { background: #D1FAE5; color: #065F46; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold; }
+                .deadline { color: #DC2626; font-weight: bold; }
+              </style>
+            </head>
+            <body>
+              <div class="container">
+                <div class="header">
+                  <h1>🎉 Congratulations!</h1>
+                  <p>Your Abstract Has Been Accepted</p>
+                </div>
+                
+                <div class="content">
+                  <p>Dear ${abstract.primaryAuthor.firstName} ${abstract.primaryAuthor.lastName},</p>
+                  
+                  <p>We are pleased to inform you that your abstract has been <strong>accepted</strong> for presentation at the <strong>NEOMED Research Forum 2026</strong>!</p>
+                  
+                  <div class="info-box">
+                    <strong>Accepted Abstract:</strong><br>
+                    <strong>Title:</strong> ${abstract.title}<br>
+                    <strong>Authors:</strong> ${formattedAuthors}<br>
+                    <strong>Category:</strong> ${abstract.category}<br>
+                    <strong>Status:</strong> <span class="status-badge">ACCEPTED</span>
+                  </div>
+                  
+                  <div class="warning-box">
+                    <strong>⚠️ Action Required by <span class="deadline">Thursday, February 5th, 2026</span></strong><br><br>
+                    Please click the button below to confirm your participation in the Research Forum. You will also have the option to choose whether you would like your abstract to be displayed on our public showcase.
+                  </div>
+                  
+                  <div style="text-align: center;">
+                    <a href="${magicLink}" class="button">Confirm Your Participation</a>
+                  </div>
+                  
+                  <p style="font-size: 12px; color: #666;">Or copy this link: <a href="${magicLink}">${magicLink}</a></p>
+                  
+                  <div class="info-box">
+                    <strong>📅 Important Dates:</strong><br>
+                    • <strong>Response Deadline:</strong> <span class="deadline">February 5, 2026</span><br>
+                    • <strong>Presentation Slides Due:</strong> February 21, 2026<br>
+                    • <strong>Research Forum:</strong> February 25, 2026
+                  </div>
+                  
+                  <p>If you have any questions, please contact us at <a href="mailto:sbadat@neomed.edu">sbadat@neomed.edu</a></p>
+                  
+                  <p>Congratulations again on your acceptance!</p>
+                  
+                  <p>Best regards,<br>
+                  <strong>NEOMED Research Forum Committee</strong></p>
+                </div>
+                
+                <div class="footer">
+                  <p>Northeast Ohio Medical University<br>
+                  Research Forum 2026</p>
+                </div>
+              </div>
+            </body>
+            </html>
+          `,
+        };
+
+        await sgMail.send(msg);
+        emailSent = true;
+
+        // Update abstract to track email was sent
+        abstract.acceptanceEmailSent = true;
+        abstract.acceptanceEmailSentAt = new Date();
+        await abstract.save();
+
+        console.log("✅ Acceptance email sent to:", abstract.email);
+      } catch (emailError) {
+        console.log("⚠️ Acceptance email not sent:", emailError.message);
+        if (emailError.response) {
+          console.log("SendGrid error details:", emailError.response.body);
+        }
+      }
+    } else {
+      console.log(
+        "⚠️ SendGrid API key not configured - skipping acceptance email"
+      );
+    }
 
     res.status(200).json({
       success: true,
-      message: "Abstract accepted",
+      message: emailSent
+        ? "Abstract accepted and notification email sent to author"
+        : "Abstract accepted (email not sent - SendGrid not configured)",
       data: {
         id: abstract._id,
         title: abstract.title,
         status: abstract.status,
         acceptedAt: abstract.acceptedAt,
+        authorResponse: abstract.authorResponse,
+        authorResponseDeadline: abstract.authorResponseDeadline,
+        emailSent,
       },
     });
   } catch (error) {
@@ -557,15 +702,89 @@ exports.rejectAbstract = async (req, res) => {
     }
 
     abstract.status = "rejected";
+    abstract.rejectedAt = new Date();
     await abstract.save();
+
+    // Optionally send rejection email
+    let emailSent = false;
+    if (process.env.SENDGRID_API_KEY) {
+      try {
+        const magicLink = getMagicLinkUrl(abstract.viewToken);
+
+        const msg = {
+          to: abstract.email,
+          from: process.env.SENDGRID_FROM_EMAIL || "sbadat@neomed.edu",
+          replyTo: "sbadat@neomed.edu",
+          subject: "NEOMED Research Forum 2026 - Submission Decision",
+          html: `
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <style>
+                body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                .header { background: linear-gradient(135deg, #475569 0%, #64748B 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+                .content { background: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
+                .info-box { background: white; border-left: 4px solid #64748B; padding: 15px; margin: 20px 0; }
+                .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+              </style>
+            </head>
+            <body>
+              <div class="container">
+                <div class="header">
+                  <h1>Submission Decision</h1>
+                  <p>NEOMED Research Forum 2026</p>
+                </div>
+                
+                <div class="content">
+                  <p>Dear ${abstract.primaryAuthor.firstName} ${abstract.primaryAuthor.lastName},</p>
+                  
+                  <p>Thank you for submitting your abstract to the NEOMED Research Forum 2026.</p>
+                  
+                  <p>After careful review by our committee, we regret to inform you that your abstract was not selected for presentation at this year's forum.</p>
+                  
+                  <div class="info-box">
+                    <strong>Abstract:</strong> ${abstract.title}
+                  </div>
+                  
+                  <p>We received many high-quality submissions this year, making the selection process highly competitive. We encourage you to continue your research and consider submitting to future NEOMED Research Forums.</p>
+                  
+                  <p>You can view your submission details anytime at: <a href="${magicLink}">${magicLink}</a></p>
+                  
+                  <p>Thank you for your contribution to advancing medical research.</p>
+                  
+                  <p>Best regards,<br>
+                  <strong>NEOMED Research Forum Committee</strong></p>
+                </div>
+                
+                <div class="footer">
+                  <p>Northeast Ohio Medical University<br>
+                  Research Forum 2026</p>
+                </div>
+              </div>
+            </body>
+            </html>
+          `,
+        };
+
+        await sgMail.send(msg);
+        emailSent = true;
+        console.log("✅ Rejection email sent to:", abstract.email);
+      } catch (emailError) {
+        console.log("⚠️ Rejection email not sent:", emailError.message);
+      }
+    }
 
     res.status(200).json({
       success: true,
-      message: "Abstract rejected",
+      message: emailSent
+        ? "Abstract rejected and notification email sent"
+        : "Abstract rejected",
       data: {
         id: abstract._id,
         title: abstract.title,
         status: abstract.status,
+        emailSent,
       },
     });
   } catch (error) {
@@ -578,7 +797,7 @@ exports.rejectAbstract = async (req, res) => {
   }
 };
 
-// @desc    Publish accepted abstracts to showcase
+// @desc    Publish accepted abstracts to showcase (admin manual override)
 // @route   PUT /api/admin/publish/:abstractId
 // @access  Private (Admin only)
 exports.publishAbstract = async (req, res) => {
@@ -601,6 +820,7 @@ exports.publishAbstract = async (req, res) => {
     }
 
     abstract.published = true;
+    abstract.displayOnShowcase = true;
     abstract.publishedAt = new Date();
     await abstract.save();
 
@@ -640,6 +860,7 @@ exports.unpublishAbstract = async (req, res) => {
     }
 
     abstract.published = false;
+    abstract.displayOnShowcase = false;
     await abstract.save();
 
     res.status(200).json({
@@ -673,7 +894,24 @@ exports.getDashboardStats = async (req, res) => {
     });
     const accepted = await Abstract.countDocuments({ status: "accepted" });
     const rejected = await Abstract.countDocuments({ status: "rejected" });
-    const published = await Abstract.countDocuments({ published: true });
+    const published = await Abstract.countDocuments({
+      published: true,
+      displayOnShowcase: true,
+    });
+
+    // Author response stats
+    const authorAccepted = await Abstract.countDocuments({
+      status: "accepted",
+      authorResponse: "accepted",
+    });
+    const authorDeclined = await Abstract.countDocuments({
+      status: "accepted",
+      authorResponse: "declined",
+    });
+    const authorPending = await Abstract.countDocuments({
+      status: "accepted",
+      authorResponse: "pending",
+    });
 
     // Get average score of all abstracts (now on 1-5 scale)
     const abstracts = await Abstract.find({ "reviews.0": { $exists: true } });
@@ -701,6 +939,12 @@ exports.getDashboardStats = async (req, res) => {
         accepted,
         rejected,
         published,
+        // Author response breakdown
+        authorResponses: {
+          accepted: authorAccepted,
+          declined: authorDeclined,
+          pending: authorPending,
+        },
         averageScore: avgScore.toFixed(2),
         scoreScale: "1-5", // Indicate the new scale
         totalReviewers: reviewerCount,
@@ -713,6 +957,130 @@ exports.getDashboardStats = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error fetching statistics",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Resend acceptance email
+// @route   POST /api/admin/resend-acceptance/:abstractId
+// @access  Private (Admin only)
+exports.resendAcceptanceEmail = async (req, res) => {
+  try {
+    const { abstractId } = req.params;
+
+    const abstract = await Abstract.findById(abstractId);
+    if (!abstract) {
+      return res.status(404).json({
+        success: false,
+        message: "Abstract not found",
+      });
+    }
+
+    if (abstract.status !== "accepted") {
+      return res.status(400).json({
+        success: false,
+        message: "Can only resend acceptance email for accepted abstracts",
+      });
+    }
+
+    if (!process.env.SENDGRID_API_KEY) {
+      return res.status(400).json({
+        success: false,
+        message: "SendGrid not configured",
+      });
+    }
+
+    const magicLink = getMagicLinkUrl(abstract.viewToken);
+    const formattedAuthors = abstract.getFormattedAuthors();
+
+    const msg = {
+      to: abstract.email,
+      from: process.env.SENDGRID_FROM_EMAIL || "sbadat@neomed.edu",
+      replyTo: "sbadat@neomed.edu",
+      subject:
+        "🎉 Reminder: Confirm Your Participation - NEOMED Research Forum 2026",
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #059669 0%, #10B981 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+            .content { background: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
+            .button { display: inline-block; background: #059669; color: white; padding: 14px 35px; text-decoration: none; border-radius: 6px; margin: 20px 0; font-weight: bold; font-size: 16px; }
+            .info-box { background: white; border-left: 4px solid #059669; padding: 15px; margin: 20px 0; }
+            .warning-box { background: #FEF3C7; border-left: 4px solid #F59E0B; padding: 15px; margin: 20px 0; }
+            .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+            .deadline { color: #DC2626; font-weight: bold; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>📬 Reminder</h1>
+              <p>Please Confirm Your Participation</p>
+            </div>
+            
+            <div class="content">
+              <p>Dear ${abstract.primaryAuthor.firstName} ${abstract.primaryAuthor.lastName},</p>
+              
+              <p>This is a reminder that your abstract has been <strong>accepted</strong> for presentation at the NEOMED Research Forum 2026.</p>
+              
+              <div class="info-box">
+                <strong>Title:</strong> ${abstract.title}<br>
+                <strong>Authors:</strong> ${formattedAuthors}
+              </div>
+              
+              <div class="warning-box">
+                <strong>⚠️ Action Required by <span class="deadline">Thursday, February 5th, 2026</span></strong><br><br>
+                Please click the button below to confirm your participation.
+              </div>
+              
+              <div style="text-align: center;">
+                <a href="${magicLink}" class="button">Confirm Your Participation</a>
+              </div>
+              
+              <p style="font-size: 12px; color: #666;">Or copy this link: <a href="${magicLink}">${magicLink}</a></p>
+              
+              <p>If you have any questions, please contact us at <a href="mailto:sbadat@neomed.edu">sbadat@neomed.edu</a></p>
+              
+              <p>Best regards,<br>
+              <strong>NEOMED Research Forum Committee</strong></p>
+            </div>
+            
+            <div class="footer">
+              <p>Northeast Ohio Medical University<br>
+              Research Forum 2026</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+    };
+
+    await sgMail.send(msg);
+
+    abstract.acceptanceEmailSent = true;
+    abstract.acceptanceEmailSentAt = new Date();
+    await abstract.save();
+
+    console.log("✅ Acceptance reminder email sent to:", abstract.email);
+
+    res.status(200).json({
+      success: true,
+      message: "Acceptance email resent successfully",
+      data: {
+        id: abstract._id,
+        email: abstract.email,
+      },
+    });
+  } catch (error) {
+    console.error("Error resending acceptance email:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error resending acceptance email",
       error: error.message,
     });
   }

@@ -207,7 +207,7 @@ exports.submitAbstract = async (req, res) => {
               <div class="container">
                 <div class="header">
                   <h1>✓ Submission Received!</h1>
-                  <p>NEOMED Research Forum 2025</p>
+                  <p>NEOMED Research Forum 2026</p>
                 </div>
                 
                 <div class="content">
@@ -217,7 +217,7 @@ exports.submitAbstract = async (req, res) => {
             primaryAuthorObj.lastName
           },</p>
                   
-                  <p>Your abstract titled "<strong>${title}</strong>" has been successfully submitted to the NEOMED Research Forum 2025.</p>
+                  <p>Your abstract titled "<strong>${title}</strong>" has been successfully submitted to the NEOMED Research Forum 2026.</p>
                   
                   <div class="info-box">
                     <strong>Submission Details:</strong><br>
@@ -247,10 +247,10 @@ exports.submitAbstract = async (req, res) => {
                   
                   <div class="info-box">
                     <strong>⏱ What's Next?</strong><br>
-                    • <strong>Review Period:</strong> January 7 - January 28, 2025<br>
-                    • <strong>Notification:</strong> January 28, 2025<br>
-                    • <strong>Final Slides Due:</strong> February 18, 2025<br>
-                    • <strong>Forum Date:</strong> February 25, 2025
+                    • <strong>Review Period:</strong> January 13 - January 28, 2026<br>
+                    • <strong>Notification:</strong> January 28, 2026<br>
+                    • <strong>Final Slides Due:</strong> February 21, 2026<br>
+                    • <strong>Forum Date:</strong> February 25, 2026
                   </div>
                   
                   <p><strong>Important:</strong> Save this email! The link above is your unique access link to view your submission status. No login required.</p>
@@ -263,7 +263,7 @@ exports.submitAbstract = async (req, res) => {
                 
                 <div class="footer">
                   <p>Northeast Ohio Medical University<br>
-                  Research Forum 2025</p>
+                  Research Forum 2026</p>
                 </div>
               </div>
             </body>
@@ -336,6 +336,158 @@ exports.getAbstractByToken = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error fetching submission",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Author responds to acceptance (accept or decline presentation spot)
+// @route   PUT /api/abstracts/respond/:token
+// @access  Public (but requires token)
+exports.authorRespond = async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { response, displayOnShowcase } = req.body;
+
+    // Validate response
+    if (!response || !["accepted", "declined"].includes(response)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid response. Must be 'accepted' or 'declined'.",
+      });
+    }
+
+    const abstract = await Abstract.findOne({ viewToken: token });
+
+    if (!abstract) {
+      return res.status(404).json({
+        success: false,
+        message: "Submission not found.",
+      });
+    }
+
+    // Check if abstract is actually accepted by admin
+    if (abstract.status !== "accepted") {
+      return res.status(400).json({
+        success: false,
+        message: "This abstract has not been accepted for presentation.",
+      });
+    }
+
+    // Check if author already responded
+    if (abstract.authorResponse && abstract.authorResponse !== "pending") {
+      return res.status(400).json({
+        success: false,
+        message: `You have already ${abstract.authorResponse} this presentation spot.`,
+      });
+    }
+
+    // Check if deadline has passed (if set)
+    if (
+      abstract.authorResponseDeadline &&
+      new Date() > abstract.authorResponseDeadline
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "The response deadline has passed. Please contact the committee.",
+      });
+    }
+
+    // Update abstract
+    abstract.authorResponse = response;
+    abstract.authorRespondedAt = new Date();
+
+    if (response === "accepted") {
+      // Set showcase preference
+      abstract.displayOnShowcase = displayOnShowcase === true;
+
+      // If display on showcase, publish it
+      if (displayOnShowcase === true) {
+        abstract.published = true;
+        abstract.publishedAt = new Date();
+      }
+
+      // Set presentation deadline (February 21, 2026)
+      abstract.presentationDeadline = new Date("2026-02-21T23:59:59");
+    } else {
+      // Author declined
+      abstract.displayOnShowcase = false;
+      abstract.published = false;
+    }
+
+    await abstract.save();
+
+    console.log(
+      `✅ Author ${response} presentation for abstract: ${abstract.title}`
+    );
+
+    res.status(200).json({
+      success: true,
+      message:
+        response === "accepted"
+          ? "You have confirmed your participation! Please submit your presentation slides by February 21, 2026."
+          : "You have declined the presentation spot. Thank you for your submission.",
+      data: abstract.getPublicView(),
+    });
+  } catch (error) {
+    console.error("Error processing author response:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error processing your response",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Update showcase preference (can be changed after initial response)
+// @route   PUT /api/abstracts/showcase/:token
+// @access  Public (but requires token)
+exports.updateShowcasePreference = async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { displayOnShowcase } = req.body;
+
+    const abstract = await Abstract.findOne({ viewToken: token });
+
+    if (!abstract) {
+      return res.status(404).json({
+        success: false,
+        message: "Submission not found.",
+      });
+    }
+
+    // Must be accepted and author must have accepted
+    if (
+      abstract.status !== "accepted" ||
+      abstract.authorResponse !== "accepted"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "This action is only available for confirmed presentations.",
+      });
+    }
+
+    abstract.displayOnShowcase = displayOnShowcase === true;
+    abstract.published = displayOnShowcase === true;
+    if (displayOnShowcase && !abstract.publishedAt) {
+      abstract.publishedAt = new Date();
+    }
+
+    await abstract.save();
+
+    res.status(200).json({
+      success: true,
+      message: displayOnShowcase
+        ? "Your abstract will be displayed on the public showcase."
+        : "Your abstract will not be displayed on the public showcase.",
+      data: abstract.getPublicView(),
+    });
+  } catch (error) {
+    console.error("Error updating showcase preference:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error updating showcase preference",
       error: error.message,
     });
   }
@@ -441,6 +593,7 @@ exports.getPublishedAbstracts = async (req, res) => {
     const abstracts = await Abstract.find({
       status: "accepted",
       published: true,
+      displayOnShowcase: true, // Only show if author opted in
     })
       .sort({ averageScore: -1 })
       .select(
