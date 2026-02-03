@@ -625,3 +625,96 @@ exports.getPublishedAbstracts = async (req, res) => {
     });
   }
 };
+
+// @desc    Update abstract details (authors, department, category)
+// @route   PUT /api/admin/abstracts/:abstractId
+// @access  Private (Admin only)
+exports.updateAbstract = async (req, res) => {
+  try {
+    const { abstractId } = req.params;
+    const {
+      primaryAuthor,
+      additionalAuthors,
+      department,
+      departmentOther,
+      category,
+    } = req.body;
+
+    const abstract = await Abstract.findById(abstractId);
+    if (!abstract) {
+      return res.status(404).json({
+        success: false,
+        message: "Abstract not found",
+      });
+    }
+
+    // Update primary author if provided
+    if (primaryAuthor) {
+      if (primaryAuthor.firstName)
+        abstract.primaryAuthor.firstName = primaryAuthor.firstName;
+      if (primaryAuthor.lastName)
+        abstract.primaryAuthor.lastName = primaryAuthor.lastName;
+      if (primaryAuthor.degree)
+        abstract.primaryAuthor.degree = primaryAuthor.degree;
+      if (primaryAuthor.email) {
+        abstract.primaryAuthor.email = primaryAuthor.email.toLowerCase();
+        abstract.email = primaryAuthor.email.toLowerCase(); // Also update main email
+      }
+    }
+
+    // Update additional authors if provided
+    if (additionalAuthors !== undefined) {
+      // Validate additional authors structure
+      const validatedAuthors = additionalAuthors
+        .map((author) => ({
+          firstName: author.firstName || "",
+          lastName: author.lastName || "",
+          degree: author.degree || "",
+        }))
+        .filter((author) => author.firstName && author.lastName); // Only keep authors with names
+
+      abstract.additionalAuthors = validatedAuthors;
+    }
+
+    // Update department if provided
+    if (department) {
+      abstract.department = department;
+      if (department === "other" && departmentOther) {
+        abstract.departmentOther = departmentOther;
+      } else if (department !== "other") {
+        abstract.departmentOther = undefined;
+      }
+    }
+
+    // Update category if provided
+    if (category) {
+      abstract.category = category;
+    }
+
+    await abstract.save();
+
+    console.log(`✅ Abstract updated by admin: ${abstract.title}`);
+
+    res.status(200).json({
+      success: true,
+      message: "Abstract updated successfully",
+      data: {
+        id: abstract._id,
+        title: abstract.title,
+        primaryAuthor: abstract.primaryAuthor,
+        additionalAuthors: abstract.additionalAuthors,
+        authors: abstract.getFormattedAuthors(),
+        department: abstract.department,
+        departmentOther: abstract.departmentOther,
+        category: abstract.category,
+      },
+    });
+  } catch (error) {
+    console.error("Error updating abstract:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error updating abstract",
+      error: error.message,
+    });
+  }
+};

@@ -15,6 +15,7 @@ const {
   publishAbstract,
   unpublishAbstract,
   getDashboardStats,
+  updateAbstract, // NEW: Add this import
 } = require("../controllers/adminController");
 
 // Public routes
@@ -23,6 +24,7 @@ router.post("/create-first", createFirstAdmin); // Only works if no admins exist
 
 // Protected routes (require admin authentication)
 router.get("/abstracts", protect, isAdmin, getAllAbstracts);
+router.put("/abstracts/:abstractId", protect, isAdmin, updateAbstract); // NEW: Edit abstract route
 router.get("/reviewers", protect, isAdmin, getAllReviewers);
 router.delete("/reviewers/:reviewerId", protect, isAdmin, deleteReviewer);
 
