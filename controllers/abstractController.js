@@ -383,16 +383,6 @@ exports.authorRespond = async (req, res) => {
     }
 
     // Check if deadline has passed (if set)
-    if (
-      abstract.authorResponseDeadline &&
-      new Date() > abstract.authorResponseDeadline
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "The response deadline has passed. Please contact the committee.",
-      });
-    }
 
     // Update abstract
     abstract.authorResponse = response;
