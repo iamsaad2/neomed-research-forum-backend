@@ -18,6 +18,12 @@ const {
   updateAbstract, // NEW: Add this import
 } = require("../controllers/adminController");
 
+const {
+  createWinner,
+  updateWinner,
+  deleteWinner,
+} = require("../controllers/winnerController");
+
 // Public routes
 router.post("/login", adminLogin);
 router.post("/create-first", createFirstAdmin); // Only works if no admins exist
@@ -53,5 +59,9 @@ router.put("/accept/:abstractId", protect, isAdmin, acceptAbstract);
 router.put("/reject/:abstractId", protect, isAdmin, rejectAbstract);
 router.put("/publish/:abstractId", protect, isAdmin, publishAbstract);
 router.put("/unpublish/:abstractId", protect, isAdmin, unpublishAbstract);
+
+router.post("/winners", protect, isAdmin, createWinner);
+router.put("/winners/:winnerId", protect, isAdmin, updateWinner);
+router.delete("/winners/:winnerId", protect, isAdmin, deleteWinner);
 
 module.exports = router;
