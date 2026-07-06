@@ -58,6 +58,7 @@ app.use("/api/abstracts", require("./routes/abstracts"));
 app.use("/api/reviewers", require("./routes/reviewers"));
 app.use("/api/admin", require("./routes/admin"));
 app.use("/api/winners", require("./routes/winners"));
+app.use("/api/settings", require("./routes/settings"));
 
 // Error handling middleware
 app.use((err, req, res, next) => {

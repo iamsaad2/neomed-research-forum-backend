@@ -181,7 +181,11 @@ exports.getAbstractsForReview = async (req, res) => {
         abstract: abstract.getFullAbstract(),
         abstractContent: abstract.abstractContent,
         hasPDF: !!abstract.pdfFile,
-        pdfUrl: abstract.pdfFile ? `/${abstract.pdfFile.path}` : null,
+        pdfUrl: abstract.pdfFile
+          ? abstract.pdfFile.path.startsWith("http")
+            ? abstract.pdfFile.path
+            : `/${abstract.pdfFile.path}`
+          : null,
         status: abstract.status,
         submittedAt: abstract.createdAt,
         hasReviewed,

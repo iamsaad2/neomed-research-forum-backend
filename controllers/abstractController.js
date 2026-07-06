@@ -1,5 +1,6 @@
 const Abstract = require("../models/Abstract");
 const sgMail = require("@sendgrid/mail");
+const uploadToCloudinary = require("../config/uploadToCloudinary");
 
 // Set SendGrid API key
 if (process.env.SENDGRID_API_KEY) {
@@ -141,6 +142,21 @@ exports.submitAbstract = async (req, res) => {
       });
     }
 
+    // Upload the PDF to Cloudinary (raw file) so it persists across redeploys.
+    let uploadedPdf;
+    try {
+      uploadedPdf = await uploadToCloudinary(req.file.buffer, {
+        folder: "neomed-forum/abstracts",
+        resource_type: "raw",
+      });
+    } catch (uploadErr) {
+      console.error("❌ PDF upload to Cloudinary failed:", uploadErr);
+      return res.status(500).json({
+        success: false,
+        message: "Could not store the uploaded PDF. Please try again.",
+      });
+    }
+
     // Prepare abstract data
     const abstractData = {
       title,
@@ -163,8 +179,9 @@ exports.submitAbstract = async (req, res) => {
         conclusion: abstractContentObj.conclusion,
       },
       pdfFile: {
-        filename: req.file.filename,
-        path: req.file.path,
+        filename: req.file.originalname,
+        path: uploadedPdf.secure_url,
+        publicId: uploadedPdf.public_id,
         uploadedAt: new Date(),
       },
       status: "pending",
@@ -504,7 +521,11 @@ exports.getAllAbstracts = async (req, res) => {
       abstract: abs.getFullAbstract(),
       abstractContent: abs.abstractContent,
       hasPDF: true,
-      pdfUrl: abs.pdfFile ? `/${abs.pdfFile.path}` : null,
+      pdfUrl: abs.pdfFile
+        ? abs.pdfFile.path.startsWith("http")
+          ? abs.pdfFile.path
+          : `/${abs.pdfFile.path}`
+        : null,
       status: abs.status,
       submittedAt: abs.createdAt,
       reviewCount: abs.reviews.length,
@@ -555,7 +576,11 @@ exports.getAbstractById = async (req, res) => {
         abstract: abstract.getFullAbstract(),
         abstractContent: abstract.abstractContent,
         hasPDF: true,
-        pdfUrl: abstract.pdfFile ? `/${abstract.pdfFile.path}` : null,
+        pdfUrl: abstract.pdfFile
+          ? abstract.pdfFile.path.startsWith("http")
+            ? abstract.pdfFile.path
+            : `/${abstract.pdfFile.path}`
+          : null,
         status: abstract.status,
         reviews: abstract.reviews,
         averageScore: abstract.averageScore,

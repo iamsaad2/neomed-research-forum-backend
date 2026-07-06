@@ -1,25 +1,9 @@
 const multer = require("multer");
-const path = require("path");
-const fs = require("fs");
 
-// Ensure uploads directory exists
-const uploadDir = "uploads/";
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-  console.log("📁 Created uploads directory");
-}
-
-// Configure storage
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, uploadDir); // Files will be stored in uploads folder
-  },
-  filename: function (req, file, cb) {
-    // Create unique filename: timestamp-originalname
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, "abstract-" + uniqueSuffix + path.extname(file.originalname));
-  },
-});
+// Abstract PDFs are held in memory and streamed straight to Cloudinary (see
+// abstractController.submitAbstract), so they survive Railway redeploys instead
+// of being written to the ephemeral local disk.
+const storage = multer.memoryStorage();
 
 // File filter - only allow PDFs
 const fileFilter = (req, file, cb) => {

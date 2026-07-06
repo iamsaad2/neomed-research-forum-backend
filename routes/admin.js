@@ -24,6 +24,14 @@ const {
   deleteWinner,
 } = require("../controllers/winnerController");
 
+const {
+  updateSettings,
+  uploadRecapPhoto,
+  deleteRecapPhoto,
+} = require("../controllers/settingsController");
+
+const uploadImage = require("../middleware/uploadImage");
+
 // Public routes
 router.post("/login", adminLogin);
 router.post("/create-first", createFirstAdmin); // Only works if no admins exist
@@ -63,5 +71,26 @@ router.put("/unpublish/:abstractId", protect, isAdmin, unpublishAbstract);
 router.post("/winners", protect, isAdmin, createWinner);
 router.put("/winners/:winnerId", protect, isAdmin, updateWinner);
 router.delete("/winners/:winnerId", protect, isAdmin, deleteWinner);
+
+// Site settings (year, dates, copy, recap photos)
+router.put("/settings", protect, isAdmin, updateSettings);
+router.post(
+  "/settings/recap-photo",
+  protect,
+  isAdmin,
+  (req, res, next) => {
+    uploadImage.single("photo")(req, res, (err) => {
+      if (err) {
+        return res.status(400).json({
+          success: false,
+          message: "Image upload error: " + err.message,
+        });
+      }
+      next();
+    });
+  },
+  uploadRecapPhoto
+);
+router.delete("/settings/recap-photo", protect, isAdmin, deleteRecapPhoto);
 
 module.exports = router;

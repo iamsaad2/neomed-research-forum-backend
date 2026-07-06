@@ -125,7 +125,7 @@ const abstractSchema = new mongoose.Schema(
       },
     },
 
-    // Required PDF Upload
+    // Required PDF Upload (stored on Cloudinary; `path` is the full secure URL)
     pdfFile: {
       filename: {
         type: String,
@@ -134,6 +134,10 @@ const abstractSchema = new mongoose.Schema(
       path: {
         type: String,
         required: true,
+      },
+      // Cloudinary public_id — kept so the file can be deleted later if needed.
+      publicId: {
+        type: String,
       },
       uploadedAt: {
         type: Date,
